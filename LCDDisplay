@@ -1,0 +1,72 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Initialize the library with the I2C address, columns, and rows
+// Address 0x27, 16 columns, 2 rows
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Initialize the LCD - use begin() instead of init()
+  lcd.begin();
+  
+  // Turn on the backlight
+  lcd.backlight();
+  
+  // Clear the display
+  lcd.clear();
+  
+  // Display initial text
+  lcd.setCursor(0, 0);
+  lcd.print("ESP32 Ready!");
+  lcd.setCursor(0, 1);
+  lcd.print("LCD Working");
+  
+  Serial.println("LCD initialized and text displayed");
+}
+
+void loop() {
+  static int counter = 0;
+  
+  delay(3000);
+  
+  // Clear screen and show different messages
+  lcd.clear();
+  
+  if (counter % 4 == 0) {
+    // Message 1
+    lcd.setCursor(0, 0);
+    lcd.print("Hello World!");
+    lcd.setCursor(0, 1);
+    lcd.print("From ESP32");
+  }
+  else if (counter % 4 == 1) {
+    // Message 2
+    lcd.setCursor(0, 0);
+    lcd.print("Counter: ");
+    lcd.print(counter);
+    lcd.setCursor(0, 1);
+    lcd.print("Loop running");
+  }
+  else if (counter % 4 == 2) {
+    // Message 3
+    lcd.setCursor(0, 0);
+    lcd.print("Arduino IDE");
+    lcd.setCursor(0, 1);
+    lcd.print("I2C Display");
+  }
+  else {
+    // Message 4
+    lcd.setCursor(0, 0);
+    lcd.print("Custom Text");
+    lcd.setCursor(0, 1);
+    lcd.print("Goes Here!");
+  }
+  
+  counter++;
+  
+  if (counter > 999) {
+    counter = 0;
+  }
+}
