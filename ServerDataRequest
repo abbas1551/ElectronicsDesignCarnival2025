@@ -1,0 +1,103 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Replace with your WiFi credentials
+const char* ssid = "ssid";
+const char* password = "password";
+
+// Replace with your server URL
+const char* serverURL = "http://44.202.39.169/api/texts";
+
+// Initialize the LCD (I2C address 0x27, 16 columns, 2 rows)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize LCD
+  lcd.begin();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connected");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverURL);
+    int httpCode = http.GET();
+
+    if (httpCode == 200) {
+      String payload = http.getString();
+      Serial.println(payload);
+
+      // Parse box1
+      int box1Start = payload.indexOf("\"box1\":\"");
+      int box1End = -1;
+      String box1 = "";
+      if (box1Start != -1) {
+        box1Start += 8; // move past "box1":" 
+        box1End = payload.indexOf("\"", box1Start);
+        if (box1End != -1) {
+          box1 = payload.substring(box1Start, box1End);
+        }
+      }
+
+      // Parse box2
+      int box2Start = payload.indexOf("\"box2\":\"");
+      int box2End = -1;
+      String box2 = "";
+      if (box2Start != -1) {
+        box2Start += 8; // move past "box2":" 
+        box2End = payload.indexOf("\"", box2Start);
+        if (box2End != -1) {
+          box2 = payload.substring(box2Start, box2End);
+        }
+      }
+
+      // Display on LCD
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(box1);
+      lcd.setCursor(0, 1);
+      lcd.print(box2);
+
+      Serial.print("Box1: "); Serial.println(box1);
+      Serial.print("Box2: "); Serial.println(box2);
+    }
+    else {
+      Serial.print("HTTP Error: ");
+      Serial.println(httpCode);
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("HTTP Error");
+      lcd.setCursor(0, 1);
+      lcd.print(httpCode);
+    }
+
+    http.end();
+  }
+  else {
+    Serial.println("WiFi disconnected");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi disconnected");
+  }
+
+  delay(5000); // Refresh every 5 seconds
+}
