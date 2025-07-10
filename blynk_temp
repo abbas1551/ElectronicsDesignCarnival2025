@@ -1,0 +1,68 @@
+#define BLYNK_PRINT Serial
+
+#define BLYNK_AUTH_TOKEN "KwoYuh8LFreYxfcij0Afn8Qy_WHT22Ab"
+#define BLYNK_TEMPLATE_ID "TMPL3QFw6468H"
+#define BLYNK_TEMPLATE_NAME "AcclerationAndTemprature"
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <LiquidCrystal_I2C.h>
+
+Adafruit_MPU6050 mpu;
+LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD at address 0x27, 16x2
+
+// Your WiFi credentials.
+// Set password to "" for open networks.
+char ssid[] = "Rizvi";
+char pass[] = "123456789";
+
+void setup()
+{
+  // Debug console
+  Serial.begin(115200);
+  lcd.begin();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Initializing...");
+
+  if (!mpu.begin()) {
+    lcd.clear();
+    lcd.print("MPU6050 FAIL");
+    while (1) { delay(10); }
+  }
+
+  lcd.clear();
+  lcd.print("MPU6050 OK");
+  delay(1000);
+  lcd.clear();
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+}
+
+void loop()
+{
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  lcd.setCursor(0,0);
+  lcd.print("X:");
+  lcd.print(a.acceleration.x, 1); // one decimal place
+  lcd.print(" Y:");
+  lcd.print(a.acceleration.y, 1);
+
+  lcd.setCursor(0,1);
+  lcd.print("Z:");
+  lcd.print(a.acceleration.z, 1);
+  lcd.print("m/s2      "); // pad with spaces to clear old data
+
+  // Send temperature value (float) to Blynk instead of struct
+  Blynk.virtualWrite(V0, temp.temperature);
+
+  Blynk.run();
+  delay(500);
+}
