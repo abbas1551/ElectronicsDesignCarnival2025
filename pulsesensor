@@ -1,0 +1,69 @@
+#define PULSE_PIN 34  // GPIO pin connected to pulse sensor
+
+const int numSamples = 50; // Smaller for faster adaptation while keeping noise low
+int samples[numSamples];
+int sampleIndex = 0;
+
+unsigned long lastBeatTime = 0;
+bool beatDetected = false;
+
+const int thresholdOffset = 50; // Adjust as per sensor output noise
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  // Initialize running average samples
+  for (int i = 0; i < numSamples; i++) {
+    samples[i] = analogRead(PULSE_PIN);
+    delay(5);
+  }
+}
+
+void loop() {
+  int pulseValue = analogRead(PULSE_PIN);
+  updateSamples(pulseValue);
+
+  int avgValue = calculateAverage();
+  int threshold = avgValue + thresholdOffset;
+
+  detectBeat(pulseValue, threshold);
+
+  delay(10); // ~100Hz sampling
+}
+
+void updateSamples(int value) {
+  samples[sampleIndex] = value;
+  sampleIndex = (sampleIndex + 1) % numSamples;
+}
+
+int calculateAverage() {
+  long sum = 0;
+  for (int i = 0; i < numSamples; i++) {
+    sum += samples[i];
+  }
+  return sum / numSamples;
+}
+
+void detectBeat(int pulseValue, int threshold) {
+  unsigned long currentTime = millis();
+
+  if (pulseValue > threshold && !beatDetected) {
+    beatDetected = true;
+
+    unsigned long interval = currentTime - lastBeatTime;
+    lastBeatTime = currentTime;
+
+    // Filter out unrealistically fast beats (<300ms ~200BPM)
+    if (interval > 300) {
+      float bpm = 60000.0 / interval;
+      Serial.print("BPM: ");
+      Serial.println(bpm, 1);
+    }
+  }
+
+  // Reset detection flag when pulse falls below threshold
+  if (pulseValue < threshold) {
+    beatDetected = false;
+  }
+}
