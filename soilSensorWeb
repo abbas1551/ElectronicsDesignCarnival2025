@@ -1,0 +1,345 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+// WiFi credentials
+const char* ssid = "Rizvi";
+const char* password = "123456789";
+
+// Create web server on port 80
+WebServer server(80);
+
+// Soil moisture sensor pin (GPIO36 is ADC1_CH0)
+const int moisturePin = 36;
+
+// Variables for moisture readings
+int moistureValue = 0;
+int moisturePercent = 0;
+
+// Data storage for graph (store last 50 readings)
+const int maxDataPoints = 50;
+int moistureHistory[maxDataPoints];
+unsigned long timeHistory[maxDataPoints];
+int dataIndex = 0;
+int dataCount = 0;
+
+// Calibration values (adjust these based on your sensor)
+const int dryValue = 4095;   // Value when sensor is completely dry (ESP32 ADC is 12-bit: 0-4095)
+const int wetValue = 1200;   // Value when sensor is in water
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+  
+  // Initialize moisture sensor pin
+  pinMode(moisturePin, INPUT);
+  
+  // Connect to WiFi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("");
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  // Define web server routes
+  server.on("/", handleRoot);
+  server.on("/data", handleData);
+  server.on("/history", handleHistory);
+  server.on("/style.css", handleCSS);
+  
+  // Start the server
+  server.begin();
+  Serial.println("HTTP server started");
+  Serial.print("Access the moisture monitor at: http://");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  // Handle client requests
+  server.handleClient();
+  
+  // Read moisture sensor
+  readMoisture();
+  
+  // Small delay to prevent overwhelming the sensor
+  delay(1000);
+}
+
+void readMoisture() {
+  // Read analog value from moisture sensor
+  moistureValue = analogRead(moisturePin);
+  
+  // Convert to percentage (adjust mapping based on your sensor calibration)
+  moisturePercent = map(moistureValue, dryValue, wetValue, 0, 100);
+  
+  // Constrain percentage to 0-100 range
+  moisturePercent = constrain(moisturePercent, 0, 100);
+  
+  // Store data for graph
+  moistureHistory[dataIndex] = moisturePercent;
+  timeHistory[dataIndex] = millis();
+  dataIndex = (dataIndex + 1) % maxDataPoints;
+  if (dataCount < maxDataPoints) {
+    dataCount++;
+  }
+  
+  // Print to serial for debugging
+  Serial.print("Raw Value: ");
+  Serial.print(moistureValue);
+  Serial.print(" | Moisture: ");
+  Serial.print(moisturePercent);
+  Serial.println("%");
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html>";
+  html += "<html>";
+  html += "<head>";
+  html += "<title>Soil Moisture Monitor</title>";
+  html += "<link rel='stylesheet' type='text/css' href='/style.css'>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<script src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js'></script>";
+  html += "</head>";
+  html += "<body>";
+  html += "<div class='container'>";
+  html += "<h1>Soil Moisture Monitor</h1>";
+  html += "<div class='card'>";
+  html += "<h2>Current Readings</h2>";
+  html += "<div class='reading'>";
+  html += "<span class='label'>Raw Value:</span>";
+  html += "<span class='value'>" + String(moistureValue) + "</span>";
+  html += "</div>";
+  html += "<div class='reading'>";
+  html += "<span class='label'>Moisture Level:</span>";
+  html += "<span class='value'>" + String(moisturePercent) + "%</span>";
+  html += "</div>";
+  html += "<div class='progress-bar'>";
+  html += "<div class='progress-fill' style='width: " + String(moisturePercent) + "%'></div>";
+  html += "</div>";
+  html += "<div class='status'>";
+  
+  // Determine moisture status
+  if (moisturePercent < 30) {
+    html += "<span class='dry'>Dry - Needs Water!</span>";
+  } else if (moisturePercent < 70) {
+    html += "<span class='moderate'>Moderate - Monitor</span>";
+  } else {
+    html += "<span class='wet'>Wet - Good</span>";
+  }
+  
+  html += "</div>";
+  html += "</div>";
+  html += "<div class='card'>";
+  html += "<h2>Moisture History</h2>";
+  html += "<canvas id='moistureChart' width='400' height='200'></canvas>";
+  html += "</div>";
+  html += "<div class='info'>";
+  html += "<p>Device IP: " + WiFi.localIP().toString() + "</p>";
+  html += "<p>Last Update: <span id='timestamp'></span></p>";
+  html += "</div>";
+  html += "</div>";
+  html += "<script>";
+  html += "let chart;";
+  html += "document.getElementById('timestamp').innerHTML = new Date().toLocaleString();";
+  html += "function initChart() {";
+  html += "  const ctx = document.getElementById('moistureChart').getContext('2d');";
+  html += "  chart = new Chart(ctx, {";
+  html += "    type: 'line',";
+  html += "    data: {";
+  html += "      labels: [],";
+  html += "      datasets: [{";
+  html += "        label: 'Moisture %',";
+  html += "        data: [],";
+  html += "        borderColor: 'rgb(75, 192, 192)',";
+  html += "        backgroundColor: 'rgba(75, 192, 192, 0.2)',";
+  html += "        tension: 0.1,";
+  html += "        fill: true";
+  html += "      }]";
+  html += "    },";
+  html += "    options: {";
+  html += "      responsive: true,";
+  html += "      scales: {";
+  html += "        y: {";
+  html += "          beginAtZero: true,";
+  html += "          max: 100,";
+  html += "          title: {";
+  html += "            display: true,";
+  html += "            text: 'Moisture (%)'";
+  html += "          }";
+  html += "        },";
+  html += "        x: {";
+  html += "          title: {";
+  html += "            display: true,";
+  html += "            text: 'Time'";
+  html += "          }";
+  html += "        }";
+  html += "      },";
+  html += "      plugins: {";
+  html += "        legend: {";
+  html += "          display: true";
+  html += "        }";
+  html += "      }";
+  html += "    }";
+  html += "  });";
+  html += "  updateChart();";
+  html += "}";
+  html += "function updateChart() {";
+  html += "  fetch('/history')";
+  html += "    .then(response => response.json())";
+  html += "    .then(data => {";
+  html += "      chart.data.labels = data.times;";
+  html += "      chart.data.datasets[0].data = data.values;";
+  html += "      chart.update();";
+  html += "    });";
+  html += "}";
+  html += "function updateData() {";
+  html += "  fetch('/data')";
+  html += "    .then(response => response.json())";
+  html += "    .then(data => {";
+  html += "      document.querySelector('.reading:nth-child(1) .value').textContent = data.rawValue;";
+  html += "      document.querySelector('.reading:nth-child(2) .value').textContent = data.moisturePercent + '%';";
+  html += "      document.querySelector('.progress-fill').style.width = data.moisturePercent + '%';";
+  html += "      ";
+  html += "      let statusElement = document.querySelector('.status span');";
+  html += "      if (data.moisturePercent < 30) {";
+  html += "        statusElement.innerHTML = 'Dry - Needs Water!';";
+  html += "        statusElement.className = 'dry';";
+  html += "      } else if (data.moisturePercent < 70) {";
+  html += "        statusElement.innerHTML = 'Moderate - Monitor';";
+  html += "        statusElement.className = 'moderate';";
+  html += "      } else {";
+  html += "        statusElement.innerHTML = 'Wet - Good';";
+  html += "        statusElement.className = 'wet';";
+  html += "      }";
+  html += "      ";
+  html += "      document.getElementById('timestamp').innerHTML = new Date().toLocaleString();";
+  html += "      updateChart();";
+  html += "    });";
+  html += "}";
+  html += "initChart();";
+  html += "setInterval(updateData, 5000);";
+  html += "</script>";
+  html += "</body>";
+  html += "</html>";
+  
+  server.send(200, "text/html", html);
+}
+
+void handleData() {
+  // JSON endpoint for raw data
+  String json = "{";
+  json += "\"rawValue\":" + String(moistureValue) + ",";
+  json += "\"moisturePercent\":" + String(moisturePercent) + ",";
+  json += "\"timestamp\":\"" + String(millis()) + "\"";
+  json += "}";
+  
+  server.send(200, "application/json", json);
+}
+
+void handleHistory() {
+  // JSON endpoint for historical data
+  String json = "{";
+  json += "\"values\":[";
+  
+  // Get data in chronological order
+  for (int i = 0; i < dataCount; i++) {
+    int index = (dataIndex - dataCount + i + maxDataPoints) % maxDataPoints;
+    json += String(moistureHistory[index]);
+    if (i < dataCount - 1) json += ",";
+  }
+  
+  json += "],\"times\":[";
+  
+  // Get timestamps and format them
+  for (int i = 0; i < dataCount; i++) {
+    int index = (dataIndex - dataCount + i + maxDataPoints) % maxDataPoints;
+    unsigned long timeMin = timeHistory[index] / 60000; // Convert to minutes
+    json += "\"" + String(timeMin) + "m\"";
+    if (i < dataCount - 1) json += ",";
+  }
+  
+  json += "]}";
+  
+  server.send(200, "application/json", json);
+}
+
+void handleCSS() {
+  String css = "body {";
+  css += "font-family: Arial, sans-serif;";
+  css += "margin: 0;";
+  css += "padding: 20px;";
+  css += "background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);";
+  css += "min-height: 100vh;";
+  css += "}";
+  css += ".container {";
+  css += "max-width: 600px;";
+  css += "margin: 0 auto;";
+  css += "background: white;";
+  css += "border-radius: 10px;";
+  css += "padding: 30px;";
+  css += "box-shadow: 0 10px 30px rgba(0,0,0,0.2);";
+  css += "}";
+  css += "h1 {";
+  css += "text-align: center;";
+  css += "color: #333;";
+  css += "margin-bottom: 30px;";
+  css += "}";
+  css += ".card {";
+  css += "background: #f8f9fa;";
+  css += "border-radius: 8px;";
+  css += "padding: 20px;";
+  css += "margin-bottom: 20px;";
+  css += "}";
+  css += ".reading {";
+  css += "display: flex;";
+  css += "justify-content: space-between;";
+  css += "margin-bottom: 15px;";
+  css += "font-size: 18px;";
+  css += "}";
+  css += ".label {";
+  css += "font-weight: bold;";
+  css += "color: #555;";
+  css += "}";
+  css += ".value {";
+  css += "color: #2c3e50;";
+  css += "font-weight: bold;";
+  css += "}";
+  css += ".progress-bar {";
+  css += "width: 100%;";
+  css += "height: 20px;";
+  css += "background: #e0e0e0;";
+  css += "border-radius: 10px;";
+  css += "overflow: hidden;";
+  css += "margin: 20px 0;";
+  css += "}";
+  css += ".progress-fill {";
+  css += "height: 100%;";
+  css += "background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb);";
+  css += "transition: width 0.3s ease;";
+  css += "}";
+  css += ".status {";
+  css += "text-align: center;";
+  css += "font-size: 20px;";
+  css += "font-weight: bold;";
+  css += "margin-top: 20px;";
+  css += "}";
+  css += ".dry { color: #e74c3c; }";
+  css += ".moderate { color: #f39c12; }";
+  css += ".wet { color: #27ae60; }";
+  css += ".info {";
+  css += "text-align: center;";
+  css += "color: #666;";
+  css += "font-size: 14px;";
+  css += "}";
+  
+  server.send(200, "text/css", css);
+}
